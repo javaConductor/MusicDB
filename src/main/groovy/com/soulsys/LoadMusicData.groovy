@@ -39,14 +39,18 @@ class LoadMusicData {
 	def handleArtistReleases = { respObj ->
 		def pagination = respObj.pagination;
 		if (pagination?.urls?.next) {
-			reqProcessor.getDiscogsData(GET, pagination.urls.next, [:], handleArtistReleases)
+			reqProcessor.getDiscogsData(GET, pagination.urls.next, [:], null, handleArtistReleases)
 		}//if
 
 		respObj?.releases?.each { release ->
 			if (release.main_release)
-				reqProcessor.getRelease(release.main_release, handleRelease)
+				reqProcessor.getRelease(release.main_release, { ->
+                    !releaseAlreadyProcessed(release.main_release)
+                }, handleRelease)
 			if (release.id)
-				reqProcessor.getRelease(release.id, handleRelease)
+				reqProcessor.getRelease(release.id, { ->
+                    !releaseAlreadyProcessed(release.id)
+                }, handleRelease)
 		}// forEach
 
 	}// handleArtistReleases
@@ -79,14 +83,18 @@ class LoadMusicData {
 		!!ret
 	}
 
+
+    def checkRelease = { releaseId -> }
 	def handleLabelReleases = { respObj ->
 		def pagination = respObj.pagination;
 		if (pagination?.urls?.next) {
-			reqProcessor.getDiscogsData(GET, pagination.urls.next, [:], handleLabelReleases)
+			reqProcessor.getDiscogsData(GET, pagination.urls.next, [:], null, handleLabelReleases)
 		}//if
 		respObj.releases.each { release ->
 			if (release.id && !releaseAlreadyProcessed(release.id))
-				reqProcessor.getRelease(release.id, handleRelease)
+				reqProcessor.getRelease(release.id, { ->
+                    !releaseAlreadyProcessed(release.id)
+                }, handleRelease)
 		}// forEach
 	}// handleLabelReleases
 
@@ -94,13 +102,15 @@ class LoadMusicData {
 		/// get the pagination frpm obj
 		def pagination = versionsObj.pagination
 		if (pagination?.urls?.next) {
-			reqProcessor.getDiscogsData(GET, pagination.urls.next, [:], handleVersions)
+			reqProcessor.getDiscogsData(GET, pagination.urls.next, [:],null, handleVersions)
 		}
 
 		/// get the list from the obj
 		versionsObj.versions.each { ver ->
 			if (ver.release_id && !releaseAlreadyProcessed(ver.release_id))
-				reqProcessor.getRelease(ver.release_id, handleRelease)
+				reqProcessor.getRelease(ver.release_id,{ ->
+                    !releaseAlreadyProcessed(release.id)
+                },  handleRelease)
 		}// forEach
 	}
 
@@ -111,8 +121,14 @@ class LoadMusicData {
 		def genres = releaseObj.genres ?: []
 		
 		def isDisco = (styles.isEmpty() || !styles.intersect(["Soul", "Disco", "Funk","Rhythm & Blues"]).isEmpty()) && !genres.intersect(["Funk / Soul", "Electronic"]).isEmpty()
-		def isJazzFunk = !styles.intersect(["Soul-Jazz", "Disco", "Jazz-Funk","Funk"]).isEmpty() &&	!genres.intersect(["Funk / Soul", "Electronic"]).isEmpty()
-		def isFunkyStuff = isDisco || isJazzFunk
+        isDisco = isDisco || !styles.intersect(["Deep House","Garage House"]).isEmpty() && !genres.intersect(["Funk / Soul", "Electronic"]).isEmpty()
+
+        def isReggae = styles.size() ==1 && styles[0] == "Reggae" &&
+                !genres.intersect(["Reggae"]).isEmpty()
+
+
+        def isJazzFunk = !styles.intersect(["Soul-Jazz", "Disco", "Jazz-Funk","Funk"]).isEmpty() &&	!genres.intersect(["Funk / Soul", "Electronic"]).isEmpty()
+		def isFunkyStuff = isDisco || isJazzFunk || isReggae
 
 		///// do the exclusions
 		def isRap = !styles.intersect([
@@ -158,16 +174,20 @@ class LoadMusicData {
 
 			if (release.main_release) {
 				if (!masterReleaseAlreadyProcessed(release.main_release))
-					reqProcessor.getRelease(release.main_release, handleRelease)
+					reqProcessor.getRelease(release.main_release, { ->
+                        !releaseAlreadyProcessed(release.main_release)
+                    }, handleRelease)
 			}
 			if(release.versions_url) {
-				reqProcessor.getDiscogsData(GET, release.versions_url, [:], handleVersions)
+				reqProcessor.getDiscogsData(GET, release.versions_url, [:], null, handleVersions)
 			}
 
 			if(release.artists) {
 				release.artists.each { art ->
 					if (!artistAlreadyProcessed(art.id))
-						reqProcessor.getArtist( art.id, handleArtist)
+						reqProcessor.getArtist( art.id, { ->
+                            !artistAlreadyProcessed(art.id)
+                        }, handleArtist)
 				}
 			}
 			/// write to db
@@ -193,7 +213,9 @@ class LoadMusicData {
 
 			if (release.main_release) {
 				if (!releaseAlreadyProcessed(release.main_release))
-					reqProcessor.getRelease(release.main_release)
+					reqProcessor.getRelease(release.main_release,{ ->
+                        !releaseAlreadyProcessed(release.id)
+                    }, handleRelease)
 
 			}
 
@@ -214,7 +236,9 @@ class LoadMusicData {
 			if(release.extraartists) {
 				release.extraartists.each { art ->
 					if (!artistAlreadyProcessed(art.id))
-						reqProcessor.getArtist( art.id, handleArtist)
+						reqProcessor.getArtist( art.id,  { ->
+                            !artistAlreadyProcessed(art.id)
+                        }, handleArtist)
 				}
 			}
 			if(release.master_id) {
@@ -249,16 +273,20 @@ class LoadMusicData {
 		if (!labelAlreadyProcessed(label.id)) {
 
 			if (label.releases_url)
-				reqProcessor.getDiscogsData(GET, label.releases_url,[:], handleLabelReleases)
+				reqProcessor.getDiscogsData(GET, label.releases_url,[:], null, handleLabelReleases)
 
 			if (label.parent?.resource_url) {
 				if(labelAlreadyProcessed(label.parent.id))
-					reqProcessor.getDiscogsData(GET,label.parent.resource_url, [:],handleLabel)
+					reqProcessor.getDiscogsData(GET,label.parent.resource_url, [:],{ ->
+                        !labelAlreadyProcessed(label.parent.id)
+                    },  handleLabel)
 			}
 
 			if (label.sublabels) {
 				label.sublabels.each { sub ->
-					reqProcessor.getDiscogsData(GET, sub.resource_url, [:], handleLabel)
+					reqProcessor.getDiscogsData(GET, sub.resource_url, [:], { ->
+                        !labelAlreadyProcessed(sub.id)
+                    },  handleLabel)
 				}
 			}
 
@@ -284,13 +312,15 @@ class LoadMusicData {
 
 		if (!artistAlreadyProcessed(artist.id)) {
 			if (artist.releases_url)
-				reqProcessor.getDiscogsData(GET, artist.releases_url, [:], handleArtistReleases)
+				reqProcessor.getDiscogsData(GET, artist.releases_url, [:], null, handleArtistReleases)
 
 			/// get the list from the obj
 			artist.members.each { mbr ->
 				if (mbr.id) {
 					if(!artistAlreadyProcessed(mbr.id)) {
-						reqProcessor.getArtist(mbr.id, handleArtist)
+						reqProcessor.getArtist(mbr.id,  { ->
+                            !artistAlreadyProcessed(mbr.id)
+                        }, handleArtist)
 						reqProcessor.getArtistReleases(mbr.id, null, handleArtistReleases)
 					}
 				}
@@ -316,10 +346,10 @@ class LoadMusicData {
 
 		Thread.start { reqProcessor.start() }
 		Thread.sleep(200)
-		def lst = ['9900','9904']
+		def lst = ['681','1060','12913','688','26972','37062']
 		//def lst = ['39357']
 		lst.each {
-			reqProcessor.getDiscogsData(GET, "/labels/$it", [:], handleLabel)
+			reqProcessor.getDiscogsData(GET, "/labels/$it", [:], null, handleLabel)
 			Thread.sleep(12000)
 		}
 	}

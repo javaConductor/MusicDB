@@ -9,7 +9,6 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.BlockingQueue
 
 import com.mongodb.Response;
-import com.sun.xml.internal.ws.api.streaming.XMLStreamReaderFactory.Default;
 
 /**
  * Created with IntelliJ IDEA.
@@ -23,41 +22,42 @@ class RequestProcessor {
 
 	def urlPrefix = "http://api.discogs.com";
 
-	def getRelease(releaseId, cb) {
+	def getRelease(releaseId, lastCheck, cb) {
 		def url = "/releases/$releaseId"
-		getDiscogsData(Method.GET, url, null, cb)
+		getDiscogsData(Method.GET, url, null, lastCheck, cb)
 	}
 
 	def getArtistReleases(artistId, page, cb) {
 		page = page ?: 1
 		def url = "/artists/$artistId/releases"
 		def q = [page: page]
-		getDiscogsData(Method.GET, url, q, cb)
+		getDiscogsData(Method.GET, url, q, null, cb)
 	}
 
 	def getMasterRelease(masterId, cb) {
 		def url = "/masters/$masterId"
-		getDiscogsData(Method.GET, url, null, cb)
+		getDiscogsData(Method.GET, url, null, null, cb)
 	}
 
-	def getArtist(artistId, cb) {
+	def getArtist(artistId, lastCheck,cb) {
 		def url = "/artists/$artistId"
-		getDiscogsData(Method.GET, url, null, cb)
+		getDiscogsData(Method.GET, url, null, lastCheck, cb)
 	}
 
 	def getVersions(masterId, cb, page) {
 		page ?: 1
 		def url = "/masters/$masterId/versions"
-		getDiscogsData(Method.GET, url, [page: page], cb)
+		getDiscogsData(Method.GET, url, [page: page], null, cb)
 	}
 
 	def getLabel(labelId, cb) {
 		def url = "/labels/$labelId"
-		getDiscogsData(Method.GET, url, [:], cb)
+		getDiscogsData(Method.GET, url, [:], null, cb)
 	}
 
-	def getDiscogsData(method, url, query, cb) {
+	def getDiscogsData(method, url, query, lastCheck, cb) {
 		if (discogsRequestProcessor.isActive()) {
+            if( !lastCheck || lastCheck() )
 			discogsRequestProcessor.send([
 				method: method,
 				url: url,
@@ -80,16 +80,8 @@ class RequestProcessor {
 					return;
 				}
 				///request =  ( method, url, query, cb )
-
-				//               println("discogsRequestProcessor: queuing $request")
+				//println("discogsRequestProcessor: queuing $request")
 				bq.put(request)
-
-				/// create promise
-
-				/// add it to the request
-
-				/// check the request type
-
 			}
 		}
 	}//.start()
@@ -102,11 +94,9 @@ class RequestProcessor {
 
 		while (!stopped) {
 			def req = bq.take();
-			def s =bq.size()
+			def s = bq.size()
 			println("reqProcessor: dequed($s): $req")
-			Thread.start{
-				processRequest(req);
-			}
+			processRequest(req);
 			Thread.sleep(1001);
 		}
 	}
